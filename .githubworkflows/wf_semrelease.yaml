@@ -1,0 +1,66 @@
+# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-nodejs
+
+name: Node.js CI
+
+on:
+  push:
+    branches: [ "main" ]
+    
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x, 22.x]
+        # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
+
+    steps:
+    - name: Check Token
+      uses: actions/checkout@v4
+      with: 
+        token: $SemRelease
+        
+    - name: Setup Git
+      run: |
+        git config user.name "Actions"
+        git config user.email "actions@gmail.com"
+        
+    - name: Get last tag
+      run: |
+        git fetch -tags
+        LAST_TAG=$(git describe --tags $(git rev-list --tags --max-count=1) 2>/dev/null || echo "v0.0.0")
+
+    - name: Get Commit Message
+      run: |
+        COMMIT_MSG=$(git log -1 --pretty=%B)
+        if [[ "$COMMIT_MSG" == *"fix"* ]]; then
+         echo "CHANGE=patch" >> $GITHUB_ENV
+        elif [[ "$COMMIT_MSG" == *"feat"* ]]; then
+          CHANGE="minor" >> $GITHUB_ENV
+        elif [[ "$COMMIT_MSG" == *"breakingChange"* ]]; then
+          CHANGE="major" >> $GITHUB_ENV
+        fi
+
+    - name: Determine new version
+      with: $CHANGE
+      run: |
+        COMMIT_MSG=$(git log -1 --pretty=%B)
+        if [[ "$CHANGE" == "patch" ]]; then
+          git tag v1.0.1
+        elif [[ "$CHANGE" == "minor" ]]; then
+          git tag v1.0.2
+        elif [[ "$CHANGE" == *"major"* ]]; then
+          git tag v1.0.3
+        fi
+
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+    - run: npm ci
+    - run: npm run build --if-present
+    - run: npm test
